@@ -131,18 +131,19 @@ public class CheapMP3 extends CheapSoundFile {
         super.ReadFile(inputFile);
 
         ArrayList<Integer> array = new ArrayList<Integer>();
-        NativeMP3Decoder decoder = new NativeMP3Decoder( inputFile.getAbsolutePath() ); 
+        NativeMP3Decoder decoder = new NativeMP3Decoder( inputFile.getAbsolutePath() );
 
         while (true) {
-            //float[] samples = new float[882];//44100hz 가정하에.44100/50으로 초당 50개 
+            //float[] samples = new float[882];//44100hz 가정하에.44100/50으로 초당 50개
             //int size = decoder.readSamples( samples );
             int result = decoder.readSamplesAll( decoder.getHandle() );
-            if(result < 0)
+            if (result < 0)
                 break;
 
             array.add(result);
 
             float fProgress = decoder.getProgress();
+            Log.d(TAG, "progress = " + fProgress);
 
             if (mProgressListener != null) {
                 boolean keepGoing = mProgressListener.reportProgress(fProgress);
@@ -151,11 +152,12 @@ public class CheapMP3 extends CheapSoundFile {
                 }
             }
         }
-            
+
         mFrameGains = new int[array.size()];
         for(int i = 0; i < array.size(); ++i ) {
             mFrameGains[i] = array.get(i);
         }
+        mNumFrames = array.size();
 
         /*
         mNumFrames = 0;
