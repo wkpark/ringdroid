@@ -134,12 +134,18 @@ public class CheapMP3 extends CheapSoundFile {
         NativeMP3Decoder decoder = new NativeMP3Decoder( inputFile.getAbsolutePath() );
 
         while (true) {
-            //float[] samples = new float[882];//44100hz 가정하에.44100/50으로 초당 50개
-            //int size = decoder.readSamples( samples );
-            int result = decoder.readSamplesAll( decoder.getHandle() );
-            if (result < 0)
+            float[] samples = new float[882];//44100hz 가정하에.44100/50으로 초당 50개
+            int size = decoder.readSamples( samples );
+            //int result = decoder.readSamplesAll( decoder.getHandle() );
+            //if (result < 0)
+            if (size == 0)
                 break;
 
+            float sum = 0.0f;
+            for (int i = 0; i < 882; i++) {
+                sum += samples[i] / 32767;
+            }
+            int result = (int) (sum / 882 * 500.0f);
             array.add(result);
 
             float fProgress = decoder.getProgress();
