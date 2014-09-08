@@ -130,47 +130,113 @@ public class CheapMP3 extends CheapSoundFile {
             java.io.IOException {
         super.ReadFile(inputFile);
 
-        ArrayList<Integer> array = new ArrayList<Integer>();
         NativeMP3Decoder decoder = new NativeMP3Decoder( inputFile.getAbsolutePath() );
 
+        mNumFrames = 0;
+        mMaxFrames = 64;  // This will grow as needed
+        mFrameOffsets = new int[mMaxFrames];
+        mFrameLens = new int[mMaxFrames];
+        mFrameGains = new int[mMaxFrames];
+        mBitrateSum = 0;
+        mMinGain = 255;
+        mMaxGain = 0;
+
+        // No need to handle filesizes larger than can fit in a 32-bit int
+        mFileSize = (int)mInputFile.length();
+
+        int pos = 0;
+        pos = decoder.getOffset();
+
         while (true) {
-            float[] samples = new float[882];//44100hz 가정하에.44100/50으로 초당 50개
-            int size = decoder.readSamples( samples );
-            //int result = decoder.readSamplesAll( decoder.getHandle() );
-            //if (result < 0)
-            if (size == 0)
-                break;
-
-            float sum = 0.0f;
-            for (int i = 0; i < 882; i++) {
-                sum += samples[i] / 32767;
-            }
-            int result = (int) (sum / 882 * 500.0f);
-            array.add(result);
-
-            float fProgress = decoder.getProgress();
-            Log.d(TAG, "progress = " + fProgress);
-
             if (mProgressListener != null) {
-                boolean keepGoing = mProgressListener.reportProgress(fProgress);
+                boolean keepGoing = mProgressListener.reportProgress(
+                    pos * 1.0 / mFileSize);
                 if (!keepGoing) {
                     break;
                 }
             }
+
+            /*
+            float[] samples = new float[882];//44100hz 가정하에.44100/50으로 초당 50개
+            int size = decoder.readSamples( samples );
+            if (size == 0)
+                break;
+            float sum = 0.0f;
+            for (int i = 0; i < size; i++) {
+                sum += samples[i];
+            }
+            int result = (int) (sum / size * 500.0f);
+            */
+
+            int gain = decoder.readSamplesAll( decoder.getHandle() );
+            if (gain < 0)
+                break;
+
+            int npos = decoder.getOffset();
+
+            // The third byte has the bitrate and samplerate
+            int bitRate = decoder.getBitRate();
+            int sampleRate = decoder.getSampleRate();
+
+            // From here on we assume the frame is good
+            mGlobalSampleRate = sampleRate;
+            mGlobalChannels = decoder.getNchannels();
+
+            mBitrateSum += bitRate;
+
+            mFrameOffsets[mNumFrames] = npos;
+            mFrameLens[mNumFrames] = npos - pos;
+            mFrameGains[mNumFrames] = gain;
+            if (gain < mMinGain)
+                mMinGain = gain;
+            if (gain > mMaxGain)
+                mMaxGain = gain;
+
+            pos = npos;
+
+            mNumFrames++;
+            if (mNumFrames == mMaxFrames) {
+                // We need to grow our arrays.  Rather than naively
+                // doubling the array each time, we estimate the exact
+                // number of frames we need and add 10% padding.  In
+                // practice this seems to work quite well, only one
+                // resize is ever needed, however to avoid pathological
+                // cases we make sure to always double the size at a minimum.
+
+                mAvgBitRate = mBitrateSum / mNumFrames;
+                int totalFramesGuess =
+                    ((mFileSize / mAvgBitRate) * sampleRate) / 144000;
+                int newMaxFrames = totalFramesGuess * 11 / 10;
+                if (newMaxFrames < mMaxFrames * 2)
+                    newMaxFrames = mMaxFrames * 2;
+
+                int[] newOffsets = new int[newMaxFrames];
+                int[] newLens = new int[newMaxFrames];
+                int[] newGains = new int[newMaxFrames];
+                for (int i = 0; i < mNumFrames; i++) {
+                    newOffsets[i] = mFrameOffsets[i];
+                    newLens[i] = mFrameLens[i];
+                    newGains[i] = mFrameGains[i];
+                }
+                mFrameOffsets = newOffsets;
+                mFrameLens = newLens;
+                mFrameGains = newGains;
+                mMaxFrames = newMaxFrames;
+            }
         }
 
-        mFrameGains = new int[array.size()];
-        for(int i = 0; i < array.size(); ++i ) {
-            mFrameGains[i] = array.get(i);
-        }
-        mNumFrames = array.size();
+        // We're done reading the file, do some postprocessing
+        if (mNumFrames > 0)
+            mAvgBitRate = mBitrateSum / mNumFrames;
+        else
+            mAvgBitRate = 0;
 
         /*
         mNumFrames = 0;
         mMaxFrames = 64;  // This will grow as needed
         mFrameOffsets = new int[mMaxFrames];
         mFrameLens = new int[mMaxFrames];
-        //mFrameGains = new int[mMaxFrames];
+        mFrameGains = new int[mMaxFrames];
         mBitrateSum = 0;
         mMinGain = 255;
         mMaxGain = 0;
@@ -284,7 +350,7 @@ public class CheapMP3 extends CheapSoundFile {
 
             mFrameOffsets[mNumFrames] = pos;
             mFrameLens[mNumFrames] = frameLen;
-            //mFrameGains[mNumFrames] = gain;
+            mFrameGains[mNumFrames] = gain;
             if (gain < mMinGain)
                 mMinGain = gain;
             if (gain > mMaxGain)
@@ -309,15 +375,15 @@ public class CheapMP3 extends CheapSoundFile {
 
                 int[] newOffsets = new int[newMaxFrames];
                 int[] newLens = new int[newMaxFrames];
-                //int[] newGains = new int[newMaxFrames];
+                int[] newGains = new int[newMaxFrames];
                 for (int i = 0; i < mNumFrames; i++) {
                     newOffsets[i] = mFrameOffsets[i];
                     newLens[i] = mFrameLens[i];
-                    //newGains[i] = mFrameGains[i];
+                    newGains[i] = mFrameGains[i];
                 }
                 mFrameOffsets = newOffsets;
                 mFrameLens = newLens;
-                //mFrameGains = newGains;
+                mFrameGains = newGains;
                 mMaxFrames = newMaxFrames;
             }
 
