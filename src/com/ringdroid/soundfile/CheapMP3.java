@@ -20,6 +20,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 
+import java.util.ArrayList;
+
+import android.util.Log;
+
 /**
  * CheapMP3 represents an MP3 file by doing a "cheap" scan of the file,
  * parsing the frame headers only and getting an extremely rough estimate
@@ -34,6 +38,8 @@ import java.io.FileOutputStream;
  * ([ 00 ] * 13) FF FA
  */
 public class CheapMP3 extends CheapSoundFile {
+    private static String TAG = "CheapMP3";
+
     public static Factory getFactory() {
         return new Factory() {
             public CheapSoundFile create() {
@@ -123,11 +129,40 @@ public class CheapMP3 extends CheapSoundFile {
             throws java.io.FileNotFoundException,
             java.io.IOException {
         super.ReadFile(inputFile);
+
+        ArrayList<Integer> array = new ArrayList<Integer>();
+        NativeMP3Decoder decoder = new NativeMP3Decoder( inputFile.getAbsolutePath() ); 
+
+        while (true) {
+            //float[] samples = new float[882];//44100hz 가정하에.44100/50으로 초당 50개 
+            //int size = decoder.readSamples( samples );
+            int result = decoder.readSamplesAll( decoder.getHandle() );
+            if(result < 0)
+                break;
+
+            array.add(result);
+
+            float fProgress = decoder.getProgress();
+
+            if (mProgressListener != null) {
+                boolean keepGoing = mProgressListener.reportProgress(fProgress);
+                if (!keepGoing) {
+                    break;
+                }
+            }
+        }
+            
+        mFrameGains = new int[array.size()];
+        for(int i = 0; i < array.size(); ++i ) {
+            mFrameGains[i] = array.get(i);
+        }
+
+        /*
         mNumFrames = 0;
         mMaxFrames = 64;  // This will grow as needed
         mFrameOffsets = new int[mMaxFrames];
         mFrameLens = new int[mMaxFrames];
-        mFrameGains = new int[mMaxFrames];
+        //mFrameGains = new int[mMaxFrames];
         mBitrateSum = 0;
         mMinGain = 255;
         mMaxGain = 0;
@@ -143,7 +178,9 @@ public class CheapMP3 extends CheapSoundFile {
         while (pos < mFileSize - 12) {
             // Read 12 bytes at a time and look for a sync code (0xFF)
             while (offset < 12) {
-                offset += stream.read(buffer, offset, 12 - offset);
+                int readed = stream.read(buffer, offset, 12 - offset);
+                if (readed > 0)
+                    offset += readed;
             }
             int bufferOffset = 0;
             while (bufferOffset < 12 &&
@@ -157,6 +194,8 @@ public class CheapMP3 extends CheapSoundFile {
                     break;
                 }
             }
+
+            Log.d(TAG, "bufferOffset = " + bufferOffset + ", offset = " + offset);
 
             if (bufferOffset > 0) {
                 // We didn't find a sync code (0xFF) at position 0;
@@ -208,7 +247,8 @@ public class CheapMP3 extends CheapSoundFile {
             // From here on we assume the frame is good
             mGlobalSampleRate = sampleRate;
             int padding = (buffer[2] & 2) >> 1;
-            int frameLen = 144 * bitRate * 1000 / sampleRate + padding;
+            int frameLen = (int) (144 * bitRate * 1000.0f / sampleRate) + padding;
+            Log.d(TAG, "pos = " + pos + ", padding = " + padding);
 
             int gain;
             if ((buffer[3] & 0xC0) == 0xC0) {
@@ -236,11 +276,12 @@ public class CheapMP3 extends CheapSoundFile {
 
             mFrameOffsets[mNumFrames] = pos;
             mFrameLens[mNumFrames] = frameLen;
-            mFrameGains[mNumFrames] = gain;
+            //mFrameGains[mNumFrames] = gain;
             if (gain < mMinGain)
                 mMinGain = gain;
             if (gain > mMaxGain)
                 mMaxGain = gain;
+            Log.d(TAG, "Gain[" + mNumFrames + "] => " + gain);
 
             mNumFrames++;
             if (mNumFrames == mMaxFrames) {
@@ -260,20 +301,21 @@ public class CheapMP3 extends CheapSoundFile {
 
                 int[] newOffsets = new int[newMaxFrames];
                 int[] newLens = new int[newMaxFrames];
-                int[] newGains = new int[newMaxFrames];
+                //int[] newGains = new int[newMaxFrames];
                 for (int i = 0; i < mNumFrames; i++) {
                     newOffsets[i] = mFrameOffsets[i];
                     newLens[i] = mFrameLens[i];
-                    newGains[i] = mFrameGains[i];
+                    //newGains[i] = mFrameGains[i];
                 }
                 mFrameOffsets = newOffsets;
                 mFrameLens = newLens;
-                mFrameGains = newGains;
+                //mFrameGains = newGains;
                 mMaxFrames = newMaxFrames;
             }
 
             stream.skip(frameLen - 12);
             pos += frameLen;
+            Log.d(TAG, "frameLen = " + frameLen);
             offset = 0;
         }
 
@@ -282,6 +324,11 @@ public class CheapMP3 extends CheapSoundFile {
             mAvgBitRate = mBitrateSum / mNumFrames;
         else
             mAvgBitRate = 0;
+        */
+
+        for (int i = 0; i < mFrameGains.length; i++) {
+            Log.d(TAG, "[" + i + "] => " + mFrameGains[i]);
+        }
     }
 
     public void WriteFile(File outputFile, int startFrame, int numFrames)
