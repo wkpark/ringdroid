@@ -219,10 +219,37 @@ static int readSamples(jint handle, int & result, int scale)
     return size;
 }
 
+static int readSamples2(jint handle, int & result, int scale)
+{
+    MP3FileHandle* mp3 = handles[handle];
+
+    float sum = 0;
+    int idx = 0;
+
+    int size = mp3->leftSamples;
+    for( ; idx < size && mp3->offset < mp3->synth.pcm.length; mp3->leftSamples-= 2, mp3->offset+=2 )
+    {
+        int value = fixedToShort(mp3->synth.pcm.samples[0][mp3->offset]);
+
+        if( MAD_NCHANNELS(&mp3->frame.header) == 2 )
+        {
+            value += fixedToShort(mp3->synth.pcm.samples[1][mp3->offset]);
+            value /= 2;
+        }
+
+        sum += fabs(value / (float)SHRT_MAX);
+        idx++;
+    }
+
+    result = (int)((sum / (float)size) * scale * 2.0f);
+
+    return size;
+}
+
 JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_readSamplesAll(JNIEnv *env, jobject obj, jint handle)
 {
     int oneSamples = 0;
-    int size = readSamples( handle, oneSamples , 500);
+    int size = readSamples2( handle, oneSamples , 500);
     if(size == 0)
         return -1;
     return oneSamples;
@@ -279,9 +306,28 @@ JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getSize(JNI
     return (jint) handles[handle]->size;
 }
 
-JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getOffset(JNIEnv *env, jobject obj, jint handle)
+JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getFrameLen(JNIEnv *env, jobject obj, jint handle)
 {
-    return (jint) ftell( handles[handle]->file );
+    MP3FileHandle* mp3 = handles[handle];
+
+    unsigned int pad_slot, N;
+    struct mad_header *header = &mp3->frame.header;
+
+    /* from frame.c */
+    /* calculate beginning of next frame */
+    pad_slot = (header->flags & MAD_FLAG_PADDING) ? 1 : 0;
+
+    if (header->layer == MAD_LAYER_I)
+        N = ((12 * header->bitrate / header->samplerate) + pad_slot) * 4;
+    else {
+        unsigned int slots_per_frame;
+
+        slots_per_frame = (header->layer == MAD_LAYER_III &&
+                (header->flags & MAD_FLAG_LSF_EXT)) ? 72 : 144;
+
+        N = (slots_per_frame * header->bitrate / header->samplerate) + pad_slot;
+    }
+    return (jint) N;
 }
 
 JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getBitRate(JNIEnv *env, jobject obj, jint handle)
@@ -291,10 +337,16 @@ JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getBitRate(
 
 JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getSampleRate(JNIEnv *env, jobject obj, jint handle)
 {
-    return (jint) handles[handle]->frame.header.samplerate;
+    struct mad_header *header = &handles[handle]->frame.header;
+    return (jint) header->samplerate;
 }
 
 JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getNchannels(JNIEnv *env, jobject obj, jint handle)
 {
-    return (jint) handles[handle]->frame.header.mode ? 2 : 1;
+    return (jint) MAD_NCHANNELS(&handles[handle]->frame.header);
+}
+
+JNIEXPORT jlong JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getOffset(JNIEnv *env, jobject obj, jint handle)
+{
+    return (jint) handles[handle]->stream.this_frame;
 }

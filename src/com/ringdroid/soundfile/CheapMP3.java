@@ -145,7 +145,6 @@ public class CheapMP3 extends CheapSoundFile {
         mFileSize = (int)mInputFile.length();
 
         int pos = 0;
-        pos = decoder.getOffset();
 
         while (true) {
             if (mProgressListener != null) {
@@ -156,23 +155,10 @@ public class CheapMP3 extends CheapSoundFile {
                 }
             }
 
-            /*
-            float[] samples = new float[882];//44100hz 가정하에.44100/50으로 초당 50개
-            int size = decoder.readSamples( samples );
-            if (size == 0)
-                break;
-            float sum = 0.0f;
-            for (int i = 0; i < size; i++) {
-                sum += samples[i];
-            }
-            int result = (int) (sum / size * 500.0f);
-            */
-
-            int gain = decoder.readSamplesAll( decoder.getHandle() );
+            int size = decoder.readNextFrame();
+            int gain = decoder.readSamplesAll();
             if (gain < 0)
                 break;
-
-            int npos = decoder.getOffset();
 
             // The third byte has the bitrate and samplerate
             int bitRate = decoder.getBitRate();
@@ -184,17 +170,22 @@ public class CheapMP3 extends CheapSoundFile {
 
             mBitrateSum += bitRate;
 
-            mFrameOffsets[mNumFrames] = npos;
-            mFrameLens[mNumFrames] = npos - pos;
+            int frameLen = decoder.getFrameLen();
+            Log.d(TAG, "pos = " + pos);
+            Log.d(TAG, "getOffset = " + decoder.getOffset());
+            Log.d(TAG, "frameLen = " + frameLen);
+            mFrameOffsets[mNumFrames] = pos;
+            mFrameLens[mNumFrames] = frameLen;
             mFrameGains[mNumFrames] = gain;
             if (gain < mMinGain)
                 mMinGain = gain;
             if (gain > mMaxGain)
                 mMaxGain = gain;
 
-            pos = npos;
+            pos += frameLen;
 
             mNumFrames++;
+            Log.d(TAG, "Gain[" + mNumFrames + "] => " + gain);
             if (mNumFrames == mMaxFrames) {
                 // We need to grow our arrays.  Rather than naively
                 // doubling the array each time, we estimate the exact

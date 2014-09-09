@@ -48,6 +48,9 @@ JNIEXPORT void JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_closeFile
 JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getSize
   (JNIEnv *, jobject, jint);
 
+JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getFrameLen
+  (JNIEnv *, jobject, jint);
+
 JNIEXPORT jlong JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getOffset
   (JNIEnv *, jobject, jint);
 

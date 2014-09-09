@@ -71,7 +71,9 @@ public class NativeMP3Decoder implements Decoder
 
         private native void closeFile( int handle );
 
-        private native int getOffset( int handle );
+        private native long getOffset( int handle );
+
+        private native int getFrameLen( int handle );
 
         private native int getBitRate( int handle );
 
@@ -79,8 +81,25 @@ public class NativeMP3Decoder implements Decoder
 
         private native int getNchannels( int handle );
 
-        // 1/50초에 해당하는 파형값을 가져옴
-        public native int readSamplesAll( int handle );
+        private native int readNextFrame( int handle );
+
+        private native int readSamplesAll( int handle );
+
+        /**
+         * @return read next frame from the native side.
+         */
+        public int readNextFrame( )
+        {
+                return readNextFrame( handle );
+        }
+
+        /**
+         * @return read frame samples from the native side.
+         */
+        public int readSamplesAll( )
+        {
+                return readSamplesAll( handle );
+        }
 
         /**
          * @return The handle retrieved from the native side.
@@ -93,9 +112,17 @@ public class NativeMP3Decoder implements Decoder
         /**
          * @return The frame offset from the native side.
          */
-        public int getOffset( )
+        public long getOffset( )
         {
                 return getOffset( handle );
+        }
+
+        /**
+         * @return The frame length from the native side.
+         */
+        public int getFrameLen( )
+        {
+                return getFrameLen( handle );
         }
 
         /**
