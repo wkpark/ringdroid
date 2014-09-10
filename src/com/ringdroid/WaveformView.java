@@ -168,7 +168,6 @@ public class WaveformView extends View {
         mSoundFile = soundFile;
         mSampleRate = mSoundFile.getSampleRate();
         mSamplesPerFrame = mSoundFile.getSamplesPerFrame();
-        mSamplesPerFrame /= mSoundFile.getChannels(); // fixup for stereo
         computeDoublesForAllZoomLevels();
         mHeightsAtThisZoomLevel = null;
     }
