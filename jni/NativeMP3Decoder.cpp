@@ -350,3 +350,20 @@ JNIEXPORT jlong JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getOffset(
 {
     return (jint) handles[handle]->stream.this_frame;
 }
+
+JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getSamplesPerFrame(JNIEnv *env, jobject obj, jint handle)
+{
+    MP3FileHandle* mp3 = handles[handle];
+    struct mad_header *header = &mp3->frame.header;
+
+    int samples_per_frame = 1152;
+
+    if (header->layer == MAD_LAYER_I) {
+        samples_per_frame = 384;
+    } else if (header->layer == MAD_LAYER_III) {
+        if (header->flags & MAD_FLAG_LSF_EXT || header->flags & MAD_FLAG_MPEG_2_5_EXT)
+            samples_per_frame = 576;
+    }
+
+    return samples_per_frame;
+}

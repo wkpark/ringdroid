@@ -85,6 +85,8 @@ public class NativeMP3Decoder implements Decoder
 
         private native int readSamplesAll( int handle );
 
+        private native int getSamplesPerFrame( int handle );
+
         /**
          * @return read next frame from the native side.
          */
@@ -99,6 +101,14 @@ public class NativeMP3Decoder implements Decoder
         public int readSamplesAll( )
         {
                 return readSamplesAll( handle );
+        }
+
+        /**
+         * @return get samples per frame from the native side.
+         */
+        public int getSamplesPerFrame( )
+        {
+                return getSamplesPerFrame( handle );
         }
 
         /**

@@ -67,6 +67,9 @@ public class CheapMP3 extends CheapSoundFile {
     private int mMinGain;
     private int mMaxGain;
 
+    // Samples Per Frame. will be recalculated by decoder
+    private int mSamplesPerFrame = 1152;
+
     public CheapMP3() {
     }
 
@@ -79,7 +82,7 @@ public class CheapMP3 extends CheapSoundFile {
     }
 
     public int getSamplesPerFrame() {
-        return 1152;
+        return mSamplesPerFrame;
     }
 
     public int[] getFrameLens() {
@@ -221,6 +224,8 @@ public class CheapMP3 extends CheapSoundFile {
             mAvgBitRate = mBitrateSum / mNumFrames;
         else
             mAvgBitRate = 0;
+
+        mSamplesPerFrame = decoder.getSamplesPerFrame();
 
         /*
         mNumFrames = 0;

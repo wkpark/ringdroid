@@ -63,6 +63,9 @@ JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getSampleRa
 JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getNchannels
   (JNIEnv *, jobject, jint);
 
+JNIEXPORT jint JNICALL Java_com_ringdroid_soundfile_NativeMP3Decoder_getSamplesPerFrame
+  (JNIEnv *, jobject, jint);
+
 #ifdef __cplusplus
 }
 #endif
