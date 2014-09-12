@@ -16,9 +16,21 @@
 
 package com.ringdroid.soundfile;
 
+import java.io.InputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+
+import javazoom.jl.decoder.Bitstream;
+import javazoom.jl.decoder.BitstreamException;
+import javazoom.jl.decoder.Decoder;
+import javazoom.jl.decoder.DecoderException;
+import javazoom.jl.decoder.Header;
+import javazoom.jl.decoder.SampleBuffer;
+
+import android.util.Log;
 
 /**
  * CheapMP3 represents an MP3 file by doing a "cheap" scan of the file,
@@ -34,6 +46,10 @@ import java.io.FileOutputStream;
  * ([ 00 ] * 13) FF FA
  */
 public class CheapMP3 extends CheapSoundFile {
+    private static final String TAG = "CheapMP3";
+    private static final int LAYER_I = 1;
+    private static final int LAYER_III = 3;
+
     public static Factory getFactory() {
         return new Factory() {
             public CheapSoundFile create() {
@@ -61,6 +77,9 @@ public class CheapMP3 extends CheapSoundFile {
     private int mMinGain;
     private int mMaxGain;
 
+    private int mLayer;
+    private int mVersion;
+
     public CheapMP3() {
     }
 
@@ -73,7 +92,16 @@ public class CheapMP3 extends CheapSoundFile {
     }
 
     public int getSamplesPerFrame() {
-        return 1152;
+        int samples_per_frame = 1152;
+
+        if (mLayer == LAYER_I) {
+            samples_per_frame = 384;
+        } else if (mLayer == LAYER_III) {
+            if (mVersion == Header.MPEG2_LSF || mVersion == Header.MPEG25_LSF)
+                samples_per_frame = 576;
+        }
+
+        return samples_per_frame;
     }
 
     public int[] getFrameLens() {
@@ -137,144 +165,107 @@ public class CheapMP3 extends CheapSoundFile {
 
         FileInputStream stream = new FileInputStream(mInputFile);
 
+        Decoder decoder = new Decoder();
+        Bitstream bitstream = new Bitstream(stream);
+
         int pos = 0;
-        int offset = 0;
-        byte[] buffer = new byte[12];
-        while (pos < mFileSize - 12) {
-            // Read 12 bytes at a time and look for a sync code (0xFF)
-            while (offset < 12) {
-                offset += stream.read(buffer, offset, 12 - offset);
-            }
-            int bufferOffset = 0;
-            while (bufferOffset < 12 &&
-                    buffer[bufferOffset] != -1)
-                bufferOffset++;
+        int gain = 0;
 
-            if (mProgressListener != null) {
-                boolean keepGoing = mProgressListener.reportProgress(
-                    pos * 1.0 / mFileSize);
-                if (!keepGoing) {
+        try {
+            Header header = bitstream.readFrame();
+
+            int nChannel = (header.mode() == Header.SINGLE_CHANNEL) ? 1 : 2;
+            mGlobalChannels = nChannel;
+
+            mLayer = header.layer();
+            mVersion = header.version();
+
+            while (true) {
+                if (mProgressListener != null) {
+                    boolean keepGoing = mProgressListener.reportProgress(
+                            pos * 1.0 / mFileSize);
+                    if (!keepGoing) {
+                        break;
+                    }
+                }
+
+                SampleBuffer frame = (SampleBuffer) decoder.decodeFrame(header, bitstream);
+                short[] pcm = frame.getBuffer();
+                bitstream.closeFrame();
+
+                double sum = 0.0f;
+                int k = 0;
+                int tmp;
+                Log.d(TAG, "pcm length = " + frame.getBufferLength());
+                for (int j = 0; j < frame.getBufferLength(); j++) {
+                    tmp = pcm[k] > 0 ? pcm[k] : -pcm[k];
+                    sum += tmp / 32767.0f;
+                    k += nChannel;
+                }
+                gain = (int) (sum / frame.getBufferLength() * 255);
+                //Log.d(TAG, "Gain[" + mNumFrames + "]=" + gain);
+
+                // set the bitrate and samplerate
+                int bitRate = header.bitrate();
+                int sampleRate = header.frequency();
+
+                mGlobalSampleRate = sampleRate;
+                mBitrateSum += bitRate;
+
+                int frameLen = header.calculate_framesize() + 4;
+                Log.d(TAG, "pos = " + pos);
+                Log.d(TAG, "frameLen = " + frameLen);
+                mFrameOffsets[mNumFrames] = pos;
+                mFrameLens[mNumFrames] = frameLen;
+                mFrameGains[mNumFrames] = gain;
+                if (gain < mMinGain)
+                    mMinGain = gain;
+                if (gain > mMaxGain)
+                    mMaxGain = gain;
+
+                mNumFrames++;
+                if (mNumFrames == mMaxFrames) {
+                    // We need to grow our arrays.  Rather than naively
+                    // doubling the array each time, we estimate the exact
+                    // number of frames we need and add 10% padding.  In
+                    // practice this seems to work quite well, only one
+                    // resize is ever needed, however to avoid pathological
+                    // cases we make sure to always double the size at a minimum.
+
+                    mAvgBitRate = mBitrateSum / mNumFrames;
+                    int totalFramesGuess =
+                        ((mFileSize / mAvgBitRate) * sampleRate) / 144000;
+                    int newMaxFrames = totalFramesGuess * 11 / 10;
+                    if (newMaxFrames < mMaxFrames * 2)
+                        newMaxFrames = mMaxFrames * 2;
+
+                    int[] newOffsets = new int[newMaxFrames];
+                    int[] newLens = new int[newMaxFrames];
+                    int[] newGains = new int[newMaxFrames];
+                    for (int i = 0; i < mNumFrames; i++) {
+                        newOffsets[i] = mFrameOffsets[i];
+                        newLens[i] = mFrameLens[i];
+                        newGains[i] = mFrameGains[i];
+                    }
+                    mFrameOffsets = newOffsets;
+                    mFrameLens = newLens;
+                    mFrameGains = newGains;
+                    mMaxFrames = newMaxFrames;
+                }
+
+                header = bitstream.readFrame();
+                if (header == null)
                     break;
-                }
+
+                pos += frameLen;
             }
-
-            if (bufferOffset > 0) {
-                // We didn't find a sync code (0xFF) at position 0;
-                // shift the buffer over and try again
-                for (int i = 0; i < 12 - bufferOffset; i++)
-                    buffer[i] = buffer[bufferOffset + i];
-                pos += bufferOffset;
-                offset = 12 - bufferOffset;
-                continue;
-            }
-
-            // Check for MPEG 1 Layer III or MPEG 2 Layer III codes
-            int mpgVersion = 0;
-            if (buffer[1] == -6 || buffer[1] == -5) {
-                mpgVersion = 1;
-            } else if (buffer[1] == -14 || buffer[1] == -13) {
-                mpgVersion = 2;
-            } else {
-                bufferOffset = 1;
-                for (int i = 0; i < 12 - bufferOffset; i++)
-                    buffer[i] = buffer[bufferOffset + i];
-                pos += bufferOffset;
-                offset = 12 - bufferOffset;
-                continue;
-            }
-
-            // The third byte has the bitrate and samplerate
-            int bitRate;
-            int sampleRate;
-            if (mpgVersion == 1) {
-                // MPEG 1 Layer III
-                bitRate = BITRATES_MPEG1_L3[(buffer[2] & 0xF0) >> 4];
-                sampleRate = SAMPLERATES_MPEG1_L3[(buffer[2] & 0x0C) >> 2];
-            } else {
-                // MPEG 2 Layer III
-                bitRate = BITRATES_MPEG2_L3[(buffer[2] & 0xF0) >> 4];
-                sampleRate = SAMPLERATES_MPEG2_L3[(buffer[2] & 0x0C) >> 2];
-            }
-
-            if (bitRate == 0 || sampleRate == 0) {
-                bufferOffset = 2;
-                for (int i = 0; i < 12 - bufferOffset; i++)
-                    buffer[i] = buffer[bufferOffset + i];
-                pos += bufferOffset;
-                offset = 12 - bufferOffset;
-                continue;
-            }
-
-            // From here on we assume the frame is good
-            mGlobalSampleRate = sampleRate;
-            int padding = (buffer[2] & 2) >> 1;
-            int frameLen = 144 * bitRate * 1000 / sampleRate + padding;
-
-            int gain;
-            if ((buffer[3] & 0xC0) == 0xC0) {
-                // 1 channel
-                mGlobalChannels = 1;
-                if (mpgVersion == 1) {
-                    gain = ((buffer[10] & 0x01) << 7) +
-                        ((buffer[11] & 0xFE) >> 1);
-                } else {
-                    gain = ((buffer[9] & 0x03) << 6) +
-                    ((buffer[10] & 0xFC) >> 2);
-                }
-            } else {
-                // 2 channels
-                mGlobalChannels = 2;
-                if (mpgVersion == 1) {
-                    gain = ((buffer[9]  & 0x7F) << 1) +
-                        ((buffer[10] & 0x80) >> 7);
-                } else {
-                    gain = 0;  // ???
-                }
-            }
-
-            mBitrateSum += bitRate;
-
-            mFrameOffsets[mNumFrames] = pos;
-            mFrameLens[mNumFrames] = frameLen;
-            mFrameGains[mNumFrames] = gain;
-            if (gain < mMinGain)
-                mMinGain = gain;
-            if (gain > mMaxGain)
-                mMaxGain = gain;
-
-            mNumFrames++;
-            if (mNumFrames == mMaxFrames) {
-                // We need to grow our arrays.  Rather than naively
-                // doubling the array each time, we estimate the exact
-                // number of frames we need and add 10% padding.  In
-                // practice this seems to work quite well, only one
-                // resize is ever needed, however to avoid pathological
-                // cases we make sure to always double the size at a minimum.
-
-                mAvgBitRate = mBitrateSum / mNumFrames;
-                int totalFramesGuess =
-                    ((mFileSize / mAvgBitRate) * sampleRate) / 144000;
-                int newMaxFrames = totalFramesGuess * 11 / 10;
-                if (newMaxFrames < mMaxFrames * 2)
-                    newMaxFrames = mMaxFrames * 2;
-
-                int[] newOffsets = new int[newMaxFrames];
-                int[] newLens = new int[newMaxFrames];
-                int[] newGains = new int[newMaxFrames];
-                for (int i = 0; i < mNumFrames; i++) {
-                    newOffsets[i] = mFrameOffsets[i];
-                    newLens[i] = mFrameLens[i];
-                    newGains[i] = mFrameGains[i];
-                }
-                mFrameOffsets = newOffsets;
-                mFrameLens = newLens;
-                mFrameGains = newGains;
-                mMaxFrames = newMaxFrames;
-            }
-
-            stream.skip(frameLen - 12);
-            pos += frameLen;
-            offset = 0;
+        } catch (BitstreamException e) {
+                Log.e(TAG, "BitstreamException", e);
+        } catch (DecoderException e) {
+                Log.e(TAG, "DecoderException", e);
+        } finally {
+            if (stream != null)
+                stream.close();
         }
 
         // We're done reading the file, do some postprocessing
@@ -310,15 +301,4 @@ public class CheapMP3 extends CheapSoundFile {
         in.close();
         out.close();
     }
-
-    static private int BITRATES_MPEG1_L3[] = {
-        0,  32,  40,  48,  56,  64,  80,  96,
-        112, 128, 160, 192, 224, 256, 320,  0 };
-    static private int BITRATES_MPEG2_L3[] = {
-        0,   8,  16,  24,  32,  40,  48,  56,
-        64,  80,  96, 112, 128, 144, 160, 0 };
-    static private int SAMPLERATES_MPEG1_L3[] = {
-        44100, 48000, 32000, 0 };
-    static private int SAMPLERATES_MPEG2_L3[] = {
-        22050, 24000, 16000, 0 };
 };
