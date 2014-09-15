@@ -749,7 +749,6 @@ static void decode_the_frame(mpg123_handle *fr)
 int attribute_align_arg mpg123_framebyframe_decode(mpg123_handle *mh, off_t *num, unsigned char **audio, size_t *bytes)
 {
 	if(bytes == NULL) return MPG123_ERR_NULL;
-	if(audio == NULL) return MPG123_ERR_NULL;
 	if(mh == NULL) return MPG123_BAD_HANDLE;
 	if(mh->buffer.size < mh->outblock) return MPG123_NO_SPACE;
 
@@ -763,7 +762,7 @@ int attribute_align_arg mpg123_framebyframe_decode(mpg123_handle *mh, off_t *num
 	mh->to_decode = mh->to_ignore = FALSE;
 	mh->buffer.p = mh->buffer.data;
 	FRAME_BUFFERCHECK(mh);
-	*audio = mh->buffer.p;
+	if(audio != NULL) *audio = mh->buffer.p;
 	*bytes = mh->buffer.fill;
 	return MPG123_OK;
 }
