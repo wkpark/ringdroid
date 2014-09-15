@@ -2,10 +2,10 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_C_INCLUDES := $(LOCAL_PATH)
-LOCAL_MODULE     := mpg123_jni
+LOCAL_MODULE     := libmpg123_jni
 LOCAL_ARM_MODE   := arm
-LOCAL_LDLIBS     := -llog
-LOCAL_CFLAGS     := -DACCURATE_ROUNDING \
+LOCAL_LDLIBS     := -llog -lc
+LOCAL_CFLAGS     := -DACCURATE_ROUNDING -U_FORTIFY_SOURCE \
                         -DOPT_ARM \
                         -DREAL_IS_FIXED \
                         -DNO_REAL \
@@ -44,6 +44,6 @@ LOCAL_SRC_FILES +=  libmpg123/tabinit.c
 LOCAL_SRC_FILES +=  libmpg123/synth_arm_accurate.S
 LOCAL_SRC_FILES +=  libmpg123/feature.c
 
-LOCAL_SHARED_LIBRARIES += liblog
+LOCAL_SHARED_LIBRARIES += liblog libc
 
 include $(BUILD_SHARED_LIBRARY)
