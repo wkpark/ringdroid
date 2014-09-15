@@ -55,7 +55,7 @@ public class CheapSoundFile {
     static Factory[] sSubclassFactories = new Factory[] {
         CheapAAC.getFactory(),
         CheapAMR.getFactory(),
-        CheapMP3.getFactory(),
+        Mpg123MP3.getFactory(),
         CheapWAV.getFactory(),
     };
 

@@ -18,6 +18,10 @@ LOCAL_PROGUARD_FLAG_FILES := proguard.flags
 
 LOCAL_STATIC_JAVA_LIBRARIES := jlayer
 
+LOCAL_JNI_SHARED_LIBRARIES := libmpg123_jni
+
+LOCAL_REQUIRED_MODULES := libmpg123_jni
+
 include $(BUILD_PACKAGE)
 ##################################################
 include $(CLEAR_VARS)
